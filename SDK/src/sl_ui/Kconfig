@@ -1,0 +1,14 @@
+#
+# For a description of the syntax of this configuration file,
+# see the file kconfig-language.txt in the NuttX tools repository.
+#
+
+config UI
+	bool "Silan UI"
+	default n
+	---help---
+		Enable support UI.
+config FLASH_4M
+	bool "4M flash"
+	---help---
+		Use 4M flash.

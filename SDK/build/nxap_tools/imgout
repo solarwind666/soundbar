@@ -1,0 +1,157 @@
+#!/bin/bash
+
+#set -x
+
+build_info="out/build/build.info"
+product_out=$(cat $build_info | grep "^PRODUCT_OUT=" | awk -F '=' '{print $NF}')
+release_default="release-images"
+kernel="zhuque"
+zkernel="zzhuque"
+ota_update="update"
+bootloader="bootload"
+wifi_firmware="wifi_firmware_fake.bin"
+dsp_firmware="dsp_firmware.bin"
+en_fnt="en16dst_fake.fnt"
+ch_fnt="ch16dst_fake.fnt"
+tone_data="tone_data.bin"
+kernel_map="id.kernel/System.map"
+uImage="uImage"
+cloudcard="cloudcard/bin"
+trans_log_tool="id.kernel/tools/trans.py"
+
+release_files="
+${product_out}/${kernel}*
+${product_out}/${zkernel}*
+${product_out}/${ota_update}*
+${product_out}/${bootloader}
+${product_out}/${wifi_firmware}
+${product_out}/${dsp_firmware}
+${product_out}/${en_fnt}
+${product_out}/${ch_fnt}
+${product_out}/${tone_data}
+${product_out}/${uImage}
+${cloudcard}/*
+$kernel_map
+${trans_log_tool}
+"
+build_symbols="${product_out}/lib/*.a"
+
+imgmkkey_default="dic_id2_test"
+updatekey_script="./build/tools/update-imgmkkeys"
+
+tool_lz77="id.kernel/tools/lz77"
+csky_imgmk="build/nxap_tools/tools"
+out_tools_imgmk="out/tools/imgmk"
+
+function usage()
+{
+cat <<USAGE
+usage: $0 [OPTION]... [out-dir]
+
+-k, --release-dir      release image output dir
+-k, --aeskey-dir       aeskey dir
+-h, --help             display this help and exit
+USAGE
+}
+
+function copy_images()
+{
+    local ret=1
+
+    release_dir="$1"
+
+    local aeskey_dir="$2"
+    local imgmkkey_product="$imgmkkey_default"
+
+    rm -rf $release_dir
+    mkdir -p $release_dir
+    for f in $release_files
+    do
+        cp -f $f $release_dir
+        ret=$?
+        if [ $ret != 0 ]; then
+            echo "WARNING: $f not exist"
+            #break
+        fi
+    done
+
+    mkdir -p ${release_dir}/symblos
+    cp $build_symbols ${release_dir}/symblos
+
+    if [ $ret = 0 ]; then
+        echo "INFO: images copy to $release_dir"
+    fi
+
+    rm -rf $out_tools_imgmk
+    mkdir -p $out_tools_imgmk
+    cp -rf ${csky_imgmk}/* $out_tools_imgmk
+    cp -rf ${tool_lz77} $out_tools_imgmk/input
+
+    local hw_bsp_board=$(cat out/build/build.info | grep "^HW_BSP_BOARD=" | awk -F "=" '{print $2}')
+    if [ -f "${hw_bsp_board}/ota.script.cfg" ] && [ -f ${release_dir}/${ota_update} ]; then
+        echo "INFO: update script.cfg by $hw_bsp_board/ota.script.cfg"
+        cp -f "${hw_bsp_board}/ota.script.cfg" ${out_tools_imgmk}/input/script.cfg
+        echo "INFO: update image.ld.in by $hw_bsp_board/ota.image.ld.in"
+        cp -f ${hw_bsp_board}/ota.image.ld.in ${out_tools_imgmk}/input/image.ld.in
+        cp -f ${release_dir}/${ota_update} ${out_tools_imgmk}/input
+    elif [ -f "${hw_bsp_board}/script.cfg" ]; then
+        echo "INFO: update script.cfg by $hw_bsp_board/script.cfg"
+        cp -f "${hw_bsp_board}/script.cfg" ${out_tools_imgmk}/input/script.cfg
+    fi
+
+    if [ -f "$updatekey_script" ] && [ -d "$aeskey_dir" ] && [ -n "$imgmkkey_product" ]; then
+        $updatekey_script $out_tools_imgmk $aeskey_dir $imgmkkey_product
+    fi
+    csky-imgmk -o $release_dir -b ${release_dir}/${bootloader} -i ${release_dir}/${kernel} -d ${release_dir}/${dsp_firmware} -f ${release_dir}/${wifi_firmware} -n ${release_dir}/${tone_data} -e ${release_dir}/${en_fnt} -c ${release_dir}/${ch_fnt} -t $out_tools_imgmk
+    ./build/tools/ota_from_images -o ${release_dir}/ota-full.zip -m ${release_dir}/manifest.out -b ${release_dir}/boot.out -i ${release_dir}/image.out
+#    rm -rf $out_tools_imgmk
+
+    return $ret
+}
+
+function main()
+{
+
+#    CUR_PATH=$(pwd)
+#    TOOL_PATH=$CUR_PATH/build/tools
+#    rm -f $CUR_PATH/mk_zhuque.sh
+#    rm -f $CUR_PATH/zqimgout
+#    rm -rf $CUR_PATH/zqtools
+#    cp -f $TOOL_PATH/mk_zhuque.sh .
+#    cp -f $TOOL_PATH/zqimgout .
+#    cp -rf $TOOL_PATH/zqtools .
+#    ./mk_zhuque.sh banana sc6138 sc6138a-xj-1 DVT cmns online
+#    return 1
+
+    local release_dir=""
+    local aeskey_dir=""
+
+    local TEMP=`getopt -o hr:k: --long help,release-dir:,aeskey-dir: \
+            -n $0 -- "$@"`
+    if [ $? != 0 ] ; then usage ; return 1 ; fi
+    eval set -- "$TEMP"
+    while true; do
+        case "$1" in
+            -r|--release-dir) release_dir="$2"; shift 2 ;;
+            -k|--aeskey-dir) aeskey_dir="$2"; shift 2 ;;
+            --) shift ; break ;;
+            -h|--help) usage ; return 1 ;;
+            *) usage ; return 1 ;;
+        esac
+    done
+
+    if [ $# -gt 0 ]; then
+        echo "ERROR: unknow args $1"
+        return 1
+    fi
+
+    if [ -z "$release_dir" ]; then
+        release_dir="$release_default"
+    fi
+
+    copy_images "$release_dir" "$aeskey_dir"
+    return $?
+}
+
+main "$@"
+exit $?

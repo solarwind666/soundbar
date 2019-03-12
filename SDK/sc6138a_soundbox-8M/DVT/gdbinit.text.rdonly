@@ -1,0 +1,10 @@
+target jtag jtag://127.0.0.1:1025
+reset
+set $cr18=1
+set $cp15cr30=0xe
+set $psr=0x80000100
+set *0xba090000=0
+set *0xba0a000c=0
+set debug-in-rom
+
+load

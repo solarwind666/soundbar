@@ -1,0 +1,15 @@
+---- hdmi_on_flag Matches (7 in 1 files) ----
+sl_ui_handle.c (SDK\src\sl_ui) line 187 : 
+bool hdmi_on_flag = false;
+ui_handle_mode in sl_ui_handle.c (SDK\src\sl_ui) : 
+	hdmi_on_flag = false;
+ui_handle_power in sl_ui_handle.c (SDK\src\sl_ui) : 
+		if (hdmi_on_flag)
+ui_handle_power in sl_ui_handle.c (SDK\src\sl_ui) : 
+			hdmi_on_flag = false;
+ui_handle_hdmi_poweroff in sl_ui_handle.c (SDK\src\sl_ui) : 
+	if (hdmi_on_flag)
+ui_handle_hdmi_poweroff in sl_ui_handle.c (SDK\src\sl_ui) : 
+		hdmi_on_flag = false;
+action_hdmi_on in sl_ui_handle.c (SDK\src\sl_ui) : 
+	hdmi_on_flag = true;

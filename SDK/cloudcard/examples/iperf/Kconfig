@@ -1,0 +1,16 @@
+config EXAMPLES_IPERF
+        bool "iperf example"
+        default n
+        depends on NET_TCP
+        ---help---
+                Enable the libiuvtester example
+#if EXAMPLES_IPERF
+#config EXAMPLES_IPERF_PROGNAME
+#    string "Proram name"
+#    default "iperf"
+#    depends on BUILD_KERNEL
+#    ---help---
+#        This is the name of the program that will be use when the NSH ELF
+#        program is installed.
+#endif
+

@@ -1,0 +1,22 @@
+#
+# For a description of the syntax of this configuration file,
+# see the file kconfig-language.txt in the NuttX tools repository.
+#
+
+config EXAMPLES_FLOWPLAY
+	bool "\"flow play for nxplayer!\" example"
+	default n
+	---help---
+		Enable the \"flow play!\" example
+
+if EXAMPLES_FLOWPLAY
+
+config EXAMPLES_FLOWPLAY_PROGNAME
+	string "Program name"
+	default "flowplay"
+	depends on BUILD_KERNEL
+	---help---
+		This is the name of the program that will be use when the NSH ELF
+		program is installed.
+
+endif

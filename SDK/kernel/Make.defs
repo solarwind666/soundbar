@@ -1,0 +1,120 @@
+############################################################################
+# configs/sc6138a-xj-1/nsh/Make.defs
+#
+#
+# Copyright (C) 2015 The YunOS Open Source Project
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+############################################################################
+
+-include ${TOPDIR}/.config
+include ${TOPDIR}/tools/Config.mk
+
+SRC_LDSCRIPT = ld.script.S
+LDSCRIPT = ld.script
+
+ifeq ($(WINTOOL),y)
+  # Windows-native toolchains
+  DIRLINK = $(TOPDIR)/tools/copydir.sh
+  DIRUNLINK = $(TOPDIR)/tools/unlink.sh
+  MKDEP = $(TOPDIR)/tools/mknulldeps.sh
+  ARCHINCLUDES = -I. -isystem "${shell cygpath -w $(TOPDIR)/include}"
+  ARCHXXINCLUDES = -I. -isystem "${shell cygpath -w $(TOPDIR)/include}" -isystem "${shell cygpath -w $(TOPDIR)/include/cxx}"
+  ARCHSCRIPT = "${shell cygpath -w $(TOPDIR)/hardware/id.bsp/configs/$(CONFIG_CHIP_NAME)/common/scripts/$(LDSCRIPT)}"
+  ARCH_SRC_SCRIPT = "${shell cygpath -w $(TOPDIR)/hardware/id.bsp/configs/$(CONFIG_CHIP_NAME)/common/scripts/$(SRC_LDSCRIPT)}"
+else
+  # Linux/Cygwin-native toolchain
+  MKDEP = $(TOPDIR)/tools/mkdeps.sh
+  ARCHINCLUDES = -I. -isystem $(TOPDIR)/include
+#  ARCHINCLUDES += -I $(TOPDIR)/ukernel/$(CONFIG_UKERNEL_TYPE)/arch/$(CONFIG_ARCH)/include    xzf:limits.h duplicated in /include&$(TOPDIR)/ukernel/$(CONFIG_UKERNEL_TYPE)/arch/$(CONFIG_ARCH)/include
+  ARCHINCLUDES += -I $(TOPDIR)/arch/$(CONFIG_ARCH)/src/$(CONFIG_ARCH_FAMILY)
+  ARCHINCLUDES += -I $(TOPDIR)/arch/$(CONFIG_ARCH)/include/$(CONFIG_ARCH_FAMILY)
+  ARCHINCLUDES += -I $(TOPDIR)/hardware/id.bsp/$(CONFIG_ARCH_CHIP)/include/$(CONFIG_CHIP_NAME)
+  ARCHINCLUDES += -I $(TOPDIR)/hardware/id.bsp/$(CONFIG_ARCH_CHIP)/include/common    #chip headers
+  #ARCHINCLUDES += -I $(TOPDIR)/hardware/id.bsp/configs/$(CONFIG_ARCH_CHIP)/common/include  #board headers
+  ARCHINCLUDES += -I $(TOPDIR)/hardware/id.bsp/configs/$(CONFIG_CHIP_NAME)/$(CONFIG_ARCH_BOARD)/include  #board headers
+  ARCHINCLUDES += -I $(TOPDIR)/include/arch/chip/$(CONFIG_CHIP_NAME)
+  ARCHXXINCLUDES = -I. -isystem $(TOPDIR)/include -isystem $(TOPDIR)/include/cxx
+  ARCHSCRIPT = $(TOPDIR)/hardware/id.bsp/configs/$(CONFIG_CHIP_NAME)/common/scripts/$(LDSCRIPT)
+  ARCH_SRC_SCRIPT = $(TOPDIR)/hardware/id.bsp/configs/$(CONFIG_CHIP_NAME)/common/scripts/$(SRC_LDSCRIPT)
+  IUVINCLUDES =  -I $(TOPDIR)/../libs/libiuv/include/ -I $(TOPDIR)/../libs/libiuv/source/nuttx/
+  INETUTILSINCLUDES =  -I $(TOPDIR)/../libs/libinetutils/include/
+  ARCHINCLUDES += -I $(TOPDIR)/hardware/id.bsp/include
+  ARCHINCLUDES += -I $(TOPDIR)/hardware/drivers/include
+  ARCHINCLUDES += -I $(TOPDIR)/hardware/id.hal/include 
+endif
+
+CROSSDEV = csky-elf-
+CC = $(CROSSDEV)gcc
+CXX = $(CROSSDEV)g++
+CPP = $(CROSSDEV)gcc -E
+LD = $(CROSSDEV)gcc
+AR = $(ARCROSSDEV)ar rcs
+NM = $(ARCROSSDEV)nm
+OBJCOPY = $(CROSSDEV)objcopy
+OBJDUMP = $(CROSSDEV)objdump
+
+ARCHCCVERSION = ${shell $(CC) -v 2>&1 | sed -n '/^gcc version/p' | sed -e 's/^gcc version \([0-9\.]\)/\1/g' -e 's/[-\ ].*//g' -e '1q'}
+ARCHCCMAJOR = ${shell echo $(ARCHCCVERSION) | cut -d'.' -f1}
+
+ifeq ($(CONFIG_DEBUG_SYMBOLS),y)
+  ARCHOPTIMIZATION = -g
+endif
+
+ifneq ($(CONFIG_DEBUG_NOOPT),y)
+  ARCHOPTIMIZATION += $(MAXOPTIMIZATION) -fno-strict-aliasing -fno-strength-reduce
+endif
+
+ARCHCFLAGS = -fno-builtin -DCONFIG_CKCPU_MMU -mcpu=ck610e -mdsp
+ARCHCXXFLAGS = -fno-builtin -fno-exceptions -fno-rtti -DCONFIG_CKCPU_MMU -mcpu=ck610e -mdsp
+ARCHWARNINGS = -Wall -Wstrict-prototypes -Wshadow -Wundef
+ARCHWARNINGSXX = -Wall -Wshadow -Wundef
+ARCHDEFINES =
+ARCHPICFLAGS = -fpic -msingle-pic-base -mpic-register=r10
+
+CFLAGS = $(ARCHCFLAGS) $(ARCHWARNINGS) $(ARCHOPTIMIZATION) $(ARCHCPUFLAGS) $(ARCHINCLUDES) $(ARCHDEFINES) $(EXTRADEFINES) $(IUVINCLUDES) $(INETUTILSINCLUDES) -pipe -g
+CPICFLAGS = $(ARCHPICFLAGS) $(CFLAGS)
+CXXFLAGS = $(ARCHCXXFLAGS) $(ARCHWARNINGSXX) $(ARCHOPTIMIZATION) $(ARCHCPUFLAGS) $(ARCHXXINCLUDES) $(ARCHDEFINES) $(EXTRADEFINES) -pipe
+CXXPICFLAGS = $(ARCHPICFLAGS) $(CXXFLAGS)
+CPPFLAGS = $(ARCHINCLUDES) $(ARCHDEFINES) $(EXTRADEFINES)
+AFLAGS = $(CFLAGS) -D__ASSEMBLY__  -mcpu=ck610e -Wa,--gdwarf2 -Wa,-melrw
+
+NXFLATLDFLAGS1 = -r -d -warn-common
+NXFLATLDFLAGS2 = $(NXFLATLDFLAGS1) -T$(TOPDIR)/ukernel/$(CONFIG_UKERNEL_TYPE)/binfmt/libnxflat/gnu-nxflat-pcrel.ld -no-check-sections
+LDNXFLATFLAGS = -e main -s 2048
+
+ASMEXT = .S
+OBJEXT = .o
+LIBEXT = .a
+EXEEXT =
+
+ifneq ($(CROSSDEV),arm-nuttx-elf-)
+  LDFLAGS += -mcpu=ck610e -nostartfiles -nodefaultlibs
+endif
+ifeq ($(CONFIG_DEBUG_SYMBOLS),y)
+  LDFLAGS += -g
+endif
+
+
+HOSTCC = gcc
+HOSTINCLUDES = -I.
+HOSTCFLAGS = -Wall -Wstrict-prototypes -Wshadow -Wundef -g -pipe
+HOSTLDFLAGS =
+
+
+VCCFLAGS = -Os -ffunction-sections -fdata-sections
+ARCHCFLAGS += $(VCCFLAGS)
+ARCHCXXFLAGS += $(VCCFLAGS)
+CFLAGS += -I /home/silan/workspace/apfw.0713/SDK/src/sl_ui -I /home/silan/workspace/apfw.0713/SDK/src/sl_lcd -I /home/silan/workspace/apfw.0713/SDK/include/arch/cskyv1/ -I /home/silan/workspace/apfw.0713/SDK/include/apps -I /home/silan/workspace/apfw.0713/SDK/include/arch/board/ -I /home/silan/workspace/apfw.0713/SDK/include/arch/chip/ -I /home/silan/workspace/apfw.0713/SDK/include/arch/chip/sc6138 -I /home/silan/workspace/apfw.0713/SDK/include/sl_include -I. -isystem /home/silan/workspace/apfw.0713/SDK/include
+CXXFLAGS += -I /home/silan/workspace/apfw.0713/SDK/src/sl_ui -I /home/silan/workspace/apfw.0713/SDK/src/sl_lcd -I /home/silan/workspace/apfw.0713/SDK/include/arch/cskyv1/ -I /home/silan/workspace/apfw.0713/SDK/include/apps -I /home/silan/workspace/apfw.0713/SDK/include/arch/board/ -I /home/silan/workspace/apfw.0713/SDK/include/arch/chip/ -I /home/silan/workspace/apfw.0713/SDK/include/arch/chip/sc6138 -I /home/silan/workspace/apfw.0713/SDK/include/sl_include -I. -isystem /home/silan/workspace/apfw.0713/SDK/include

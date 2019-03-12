@@ -1,0 +1,9 @@
+i2ctest
+i2stest
+romfs
+rtctest
+iperf
+wget
+gpiotest
+uarttest
+flowplay

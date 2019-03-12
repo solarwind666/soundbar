@@ -1,0 +1,272 @@
+#!/bin/bash
+
+#set -x
+
+ERR_INVALID_ARGS=1
+ERR_INPUT_FILE_NOTEXIST=2
+
+BLOCK_HEADER="YunOSYoC"
+FILE_COUNT_SIZE=1
+BLOCK_FILE_TYPE_SIZE=1
+BLOCK_FILE_LENGTH_SIZE=4
+MD5SUM_LENGTH=16
+
+# 0x80
+FILE_TYPE_MANIFEST=128
+# 0x81
+FILE_TYPE_BOOT=129
+# 0x82
+FILE_TYPE_IMAGE=130
+
+BIG_ENDAIN=false
+
+function usage()
+{
+cat <<USAGE
+usage: $0 [OPTION]...
+
+-o, --output          output file name
+-m, --input-manifest  input manifest file
+-b, --input-boot      input boot file
+-i, --input-image     input image file
+-h, --help            display this help and exit
+USAGE
+}
+
+function append_char()
+{
+    local ret=1
+    local output="$1"
+    local addpend_char="$2"
+    local append_hex=$(echo "obase=16;$addpend_char" | bc)
+    if [ $(echo -n $append_hex | wc -c) -lt 2 ]; then
+        append_hex=0${append_hex}
+    fi
+    echo -n -e "\x${append_hex}" >> $output
+    ret=$?
+    return $ret
+}
+
+function append_4bytes_length()
+{
+    ret=1
+    local output="$1"
+    local addpend_length="$2"
+
+    local file_size_dec=$addpend_length
+    local file_size_bin=$(echo "obase=2;$file_size_dec" | bc)
+    local bit_1_cnt=`echo $file_size_bin | awk -F'1' '{print NF-1}'`
+    if [ `expr $bit_1_cnt % 2` = 0 ]; then
+        file_size_bin=${file_size_bin}0
+    else
+        file_size_bin=${file_size_bin}1
+    fi
+    ((file_size_dec=2#${file_size_bin}))
+    local file_size_hex=$(echo "obase=16;$file_size_dec" | bc)
+    local char_cnt_hex=$(echo -n $file_size_hex | wc -c)
+    local char_total_hex=`expr $BLOCK_FILE_LENGTH_SIZE \* 2`
+    local char_add_cnt=`expr $char_total_hex - $char_cnt_hex`
+    local i=
+    for ((i=0; i<$char_add_cnt; i++))
+    do
+        file_size_hex=0${file_size_hex}
+    done
+
+    local j=
+    local index=
+    for ((i=0; i<$BLOCK_FILE_LENGTH_SIZE; i++))
+    do
+        if [ "$BIG_ENDAIN" = "true" ]; then
+            index=`expr $i \* 2`
+            j=$(echo -n ${file_size_hex:$index:2})
+            echo -n -e "\x$j" >> $output || break
+            ret=$?
+        else
+            index=`expr $BLOCK_FILE_LENGTH_SIZE - $i - 1`
+            index=`expr $index \* 2`
+            j=$(echo -n ${file_size_hex:$index:2})
+            echo -n -e "\x$j" >> $output || break
+            ret=$?
+        fi
+    done
+
+    return $ret
+}
+
+function append_file()
+{
+    ret=1
+    local output="$1"
+    local addpend_file="$2"
+
+    local file_size_dec=$(ls -l "$addpend_file" | awk '{print $5}')
+    append_4bytes_length "$output" "$file_size_dec"
+    ret=$?
+
+    if [ $ret = 0 ]; then
+        cat $addpend_file >> $output
+        ret=$?
+    fi
+
+    return $ret
+}
+
+function append_md5()
+{
+    ret=1
+    local output="$1"
+    local i=
+    local j=
+    local index=
+
+    local file_md5=$(md5sum $output | awk '{print $1}')
+    local md5_bytes=`expr $(echo -n $file_md5 | wc -c) \/ 2`
+    for ((i=0; i<$md5_bytes; i++))
+    do
+        index=`expr $i \* 2`
+        j=$(echo -n ${file_md5:$index:2})
+        echo -n -e "\x$j" >> $output || break
+        ret=$?
+    done
+
+    return $ret
+}
+
+function main()
+{
+    local ret=1
+    local output=""
+    local input_manifest=""
+    local input_boot=""
+    local input_image=""
+
+    if [ $# = 0 ]; then
+        usage
+        return $ERR_INVALID_ARGS
+    fi
+
+    local TEMP=`getopt -o ho:m:b:i: --long help,output:,input-manifest:,input-boot:,input-image: \
+        -n $0 -- "$@"`
+
+    if [ $? != 0 ] ; then usage ; return $ERR_INVALID_ARGS ; fi
+
+    eval set -- "$TEMP"
+
+    while true ; do
+        case "$1" in
+            -o|--output) output="$2"; shift 2 ;;
+            -m|--input-manifest) input_manifest="$2"; shift 2 ;;
+            -b|--input-boot) input_boot="$2"; shift 2 ;;
+            -i|--input-image) input_image="$2"; shift 2 ;;
+            --) shift ; break ;;
+            -h|--help) usage ; return $ERR_INVALID_ARGS ;;
+            *) usage ; return $ERR_INVALID_ARGS ;;
+        esac
+    done
+
+    if [ $# != 0 ]; then
+        usage
+        return $ERR_INVALID_ARGS
+    fi
+
+    while true
+    do
+        local append_files_count=0
+        local append_files_size=0
+        local packed_total_size=0
+
+        if [ -z "$output" ]; then
+            echo "ERROR: please set output file name"
+            ret=$ERR_INVALID_ARGS
+            break
+        fi
+        if [ -z "$input_manifest" ]; then
+            echo "ERROR: please input manifest file"
+            ret=$ERR_INVALID_ARGS
+            break
+        fi
+        if [ -z "$input_boot" ] && [ -z "$input_image" ]; then
+            echo "ERROR: please input boot or image"
+            ret=$ERR_INVALID_ARGS
+            break
+        fi
+
+        if [ ! -f "$input_manifest" ]; then
+            echo "ERROR: $input_manifest not exist"
+            ret=$ERR_INPUT_FILE_NOTEXIST
+            break
+        fi
+        let append_files_count+=1
+        let append_files_size+=$BLOCK_FILE_TYPE_SIZE
+        let append_files_size+=$BLOCK_FILE_LENGTH_SIZE
+        let append_files_size+=$(ls -l "$input_manifest" | awk '{print $5}')
+
+        if [ -n "$input_boot" ]; then
+            if [ ! -f "$input_boot" ]; then
+                echo "ERROR: $input_boot not exist"
+                ret=$ERR_INPUT_FILE_NOTEXIST
+                break
+            fi
+            let append_files_count+=1
+            let append_files_size+=$BLOCK_FILE_TYPE_SIZE
+            let append_files_size+=$BLOCK_FILE_LENGTH_SIZE
+            let append_files_size+=$(ls -l "$input_boot" | awk '{print $5}')
+        fi
+        if [ -n "$input_image" ]; then
+            if [ ! -f "$input_image" ]; then
+                echo "ERROR: $input_image not exist"
+                ret=$ERR_INPUT_FILE_NOTEXIST
+                break
+            fi
+            let append_files_count+=1
+            let append_files_size+=$BLOCK_FILE_TYPE_SIZE
+            let append_files_size+=$BLOCK_FILE_LENGTH_SIZE
+            let append_files_size+=$(ls -l "$input_image" | awk '{print $5}')
+        fi
+
+        if [ -f "$output" ]; then
+            echo "WARNING: $output exist, replace"
+            rm -f "$output"
+        fi
+
+        touch "$output"
+        echo -n "$BLOCK_HEADER" >> $output
+
+        let packed_total_size+=$FILE_COUNT_SIZE
+        let packed_total_size+=$append_files_size
+        let packed_total_size+=$MD5SUM_LENGTH
+
+        append_4bytes_length $output $packed_total_size || break
+        append_char $output $append_files_count || break
+
+        append_char $output $FILE_TYPE_MANIFEST || break
+        append_file $output "$input_manifest" || break
+
+        if [ -f "$input_boot" ]; then
+            append_char $output $FILE_TYPE_BOOT || break
+            append_file $output "$input_boot" || break
+        fi
+
+        if [ -f "$input_image" ]; then
+            append_char $output $FILE_TYPE_IMAGE || break
+            append_file $output "$input_image" || break
+        fi
+
+        append_md5 "$output"
+        ret=$?
+
+        break
+    done
+
+    if [ $ret = 0 ]; then
+        echo "INFO: pack images to $output successfully"
+    else
+        echo "ERROR: pack images to $output failed"
+    fi
+
+    return $ret
+}
+
+main "$@"
+exit $?
+

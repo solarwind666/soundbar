@@ -1,0 +1,68 @@
+#!/bin/bash
+
+function update_product_key()
+{
+    local ret=1
+    local imgmk_dir="$1"
+    local aeskey_dir="$2"
+    local product_name="$3"
+    local key_aes_base64="$(cat ${aeskey_dir}/aes.key)"
+    local url_getproductkey=$(cat ${aeskey_dir}/url.cfg | grep ^getProductKey= | head -1 | awk -F "=" '{print $2}')
+
+    echo "INFO: update imgmk keys for $product_name"
+    while(true)
+    do
+        local file_boot_key=${imgmk_dir}/input/boot.key
+        local file_image_key=${imgmk_dir}/input/image.key
+        local file_tbprivkey_pem=${imgmk_dir}/input/tb_privkey.pem
+
+        local ret_curl=$(curl -d "productModel=${product_name}" "$url_getproductkey") || break
+        local ret_tbPrivkey=$(echo "$ret_curl" | jq -r .tbPrivkey) || break
+        local ret_imageKey=$(echo "$ret_curl" | jq -r .imageKey) || break
+        local ret_bootKey=$(echo "$ret_curl" | jq -r .bootKey) || break
+
+        local tbPrivkey=$(java -jar "${aeskey_dir}/bin/AesKey.jar" decrypt "$key_aes_base64" "$ret_tbPrivkey") || break
+        local base64_imageKey=$(java -jar "${aeskey_dir}/bin/AesKey.jar" decrypt "$key_aes_base64" "$ret_imageKey") || break
+        local base64_bootKey=$(java -jar "${aeskey_dir}/bin/AesKey.jar" decrypt "$key_aes_base64" "$ret_bootKey") || break
+
+        local hex_imageKey=$(echo "$base64_imageKey" | openssl base64 -d | xxd -p) || break
+        local hex_bootKey=$(echo "$base64_bootKey" | openssl base64 -d | xxd -p) || break
+
+        local imageKey=""
+        local bootKey=""
+        for LINE in `echo "$hex_imageKey"`; do imageKey="${imageKey}${LINE}"; done
+        for LINE in `echo "$hex_bootKey"`; do bootKey="${bootKey}${LINE}"; done
+
+        # cut 256 key to 128
+        imageKey=${imageKey:0:32}
+        sed -i "s/key=.*/key=$imageKey/g" $file_image_key || break
+        sed -i "s/key=.*/key=$bootKey/g" $file_boot_key || break
+
+        local privkey_pem_oneline=64
+        local length_tbPrivkey=$(echo "$tbPrivkey" | wc -c)
+        local key_lines=`expr $length_tbPrivkey / $privkey_pem_oneline` || break
+        local i
+        local index
+        local line
+
+        echo "-----BEGIN RSA PRIVATE KEY-----" > $file_tbprivkey_pem || break
+        for ((i=0; i<=$key_lines ; i++))
+        do
+            index=`expr $i \* $privkey_pem_oneline`
+            line=$(echo -n ${tbPrivkey:$index:$privkey_pem_oneline})
+            echo "$line" >> $file_tbprivkey_pem || break
+        done
+        echo "-----END RSA PRIVATE KEY-----" >> $file_tbprivkey_pem || break
+
+        ret=0
+        break
+    done
+
+    if [ $ret != 0 ]; then
+        echo "ERROR: update imgmk keys for $product_name failed"
+    fi
+    return $ret
+}
+
+update_product_key "$@"
+exit $?

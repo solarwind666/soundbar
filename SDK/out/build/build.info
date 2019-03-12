@@ -1,0 +1,9 @@
+BUILD_PRODUCT=sc6138a_soundbox-8M
+BUILD_STAGE=DVT
+CONFIG_YUNIO_TYPE=cmns
+UKERNEL_TYPE=banana
+BUILD_CHIP=sc6138
+PRODUCT_OUT=/myproject/jl/sbb_79324/sbb79324_v1.1_apfw.c8m_1.24/SDK/out/target/product/sc6138a_soundbox-8M
+BUILD_BOARD=sc6138a_soundbox-8M-dvt
+HW_BSP_CONFIG=sc6138a_soundbox-8M
+HW_BSP_BOARD=sc6138a_soundbox-8M/DVT

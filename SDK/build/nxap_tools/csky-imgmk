@@ -1,0 +1,195 @@
+#!/bin/bash
+
+#set -x
+
+ERR_INVALID_ARGS=1
+ERR_INPUT_FILE_NOTEXIST=2
+
+BUILD_TOOLCHAIN="build/toolchain"
+export PATH=$(pwd)/build/toolchain/sc6138/bin:$PATH
+
+IMGMK_OUTPUT_LIST="
+*.out
+program.binary
+"
+
+VER_SYSTEM="system.ver"
+VER_PRODUCT="product.ver"
+VER_SDK_LEVEL="sdk_level.ver"
+
+function usage()
+{
+cat <<USAGE
+usage: $0 [OPTION]...
+
+-o, --output-dir              output dir name
+-b, --input-boot              input boot file
+-i, --input-image             input image file
+-d, --input-dsp               input dsp file
+-f, --input-firmware          input firmware file
+-e, --input-en_fnt            input english font file
+-c, --input-ch_fnt            input chinese font file
+-n, --input-tone_data         input tone_data file
+-t, --tools-imgmk             imgmk dir
+-h, --help                    display this help and exit
+USAGE
+}
+
+function secsign_images()
+{
+    local ret=1
+    local ret_getver=1
+    local secsign_tools_dir="$1"
+    local signed_outdir="$2"
+    local unsign_bootload="$3"
+    local unsign_image="$4"
+    local dsp="$5"
+    local firmware="$6"
+    local tone_data="$7"
+    local en_fnt="$8"
+    local ch_fnt="$9"
+
+    while(true)
+    do
+        mkdir -p "$signed_outdir"
+
+        local input_boot=`basename $(cat ${secsign_tools_dir}/input/script.cfg | grep ^BOOT= | awk -F "=" '{print $2}')`
+        local input_image=`basename $(cat ${secsign_tools_dir}/input/script.cfg | grep ^IMAGE1= | awk -F "=" '{print $2}')`
+        local input_dsp=`basename $(cat ${secsign_tools_dir}/input/script.cfg | grep ^IMAGE2= | awk -F "=" '{print $2}')`
+        local input_firmware=`basename $(cat ${secsign_tools_dir}/input/script.cfg | grep ^IMAGE3= | awk -F "=" '{print $2}')`
+        local input_tone_data=`basename $(cat ${secsign_tools_dir}/input/script.cfg | grep ^IMAGE6= | awk -F "=" '{print $2}')`
+        local input_en_fnt=`basename $(cat ${secsign_tools_dir}/input/script.cfg | grep ^IMAGE4= | awk -F "=" '{print $2}')`
+        local input_ch_fnt=`basename $(cat ${secsign_tools_dir}/input/script.cfg | grep ^IMAGE5= | awk -F "=" '{print $2}')`
+
+        cp -f "$unsign_bootload" "${secsign_tools_dir}/input/${input_boot}" || break
+        cp -f "$unsign_image" "${secsign_tools_dir}/input/${input_image}" || break
+        touch "$dsp" && cp -f "$dsp" "${secsign_tools_dir}/input/${input_dsp}" || break
+        touch "$firmware" && cp -f "$firmware" "${secsign_tools_dir}/input/${input_firmware}" || break
+        touch "$tone_data" && cp -f "$tone_data" "${secsign_tools_dir}/input/${input_tone_data}" || break
+        touch "$en_fnt" && cp -f "$en_fnt" "${secsign_tools_dir}/input/${input_en_fnt}" || break
+        touch "$ch_fnt" && cp -f "$ch_fnt" "${secsign_tools_dir}/input/${input_ch_fnt}" || break
+
+        pushd "$secsign_tools_dir" > /dev/null || break
+
+        ./get_version.sh
+        ret_getver=$?
+
+        ./imgmk.sh clean
+        ./imgmk.sh
+        ret=$?
+        popd > /dev/null
+
+        if [ $ret_getver = 0 ]; then
+            cp -f "${secsign_tools_dir}/${VER_SYSTEM}" "${signed_outdir}"
+            cp -f "${secsign_tools_dir}/${VER_PRODUCT}" "${signed_outdir}"
+            cp -f "${secsign_tools_dir}/${VER_SDK_LEVEL}" "${signed_outdir}"
+        fi
+
+        if [ $ret = 0 ]; then
+            for outfile in $IMGMK_OUTPUT_LIST
+            do
+                cp -f ${secsign_tools_dir}/${outfile} ${signed_outdir}
+            done
+        fi
+
+        break
+    done
+
+    return $ret
+}
+
+function main()
+{
+    local ret=1
+    local output_dir=""
+    local input_manifest=""
+    local input_boot=""
+    local input_image=""
+    local input_dsp=""
+    local input_firmware=""
+    local input_tone_data=""
+    local tools_imgmk=""
+    local input_en_fnt=""
+    local input_ch_fnt=""
+
+    if [ $# = 0 ]; then
+        usage
+        return $ERR_INVALID_ARGS
+    fi
+
+    local TEMP=`getopt -o ho:b:i:d:f:n:e:c:t: --long help,output-dir:,input-boot:,input-image:,input-dsp:,input-firmware:,input-tone_data:,input-en_fnt:,input-ch_fnt:,tools-imgmk: \
+        -n $0 -- "$@"`
+
+    if [ $? != 0 ] ; then usage ; return $ERR_INVALID_ARGS ; fi
+
+    eval set -- "$TEMP"
+
+    while true ; do
+        case "$1" in
+            -o|--output-dir) output_dir="$2"; shift 2 ;;
+            -b|--input-boot) input_boot="$2"; shift 2 ;;
+            -i|--input-image) input_image="$2"; shift 2 ;;
+            -d|--input-dsp) input_dsp="$2"; shift 2 ;;
+            -f|--input-firmware) input_firmware="$2"; shift 2 ;;
+            -n|--input-tone_data) input_tone_data="$2"; shift 2 ;;
+            -e|--input-en_fnt) input_en_fnt="$2"; shift 2 ;;
+            -c|--input-ch_fnt) input_ch_fnt="$2"; shift 2 ;;
+            -t|--tools-imgmk) tools_imgmk="$2"; shift 2 ;;
+            --) shift ; break ;;
+            -h|--help) usage ; return $ERR_INVALID_ARGS ;;
+            *) usage ; return $ERR_INVALID_ARGS ;;
+        esac
+    done
+
+    if [ $# != 0 ]; then
+        usage
+        return $ERR_INVALID_ARGS
+    fi
+
+    while true
+    do
+        if [ -z "$output_dir" ]; then
+            echo "ERROR: please set output dir"
+            ret=$ERR_INVALID_ARGS
+            break
+        fi
+        if [ -z "$input_boot" ]; then
+            echo "ERROR: please input boot"
+            ret=$ERR_INVALID_ARGS
+            break
+        fi
+        if [ -z "$input_image" ]; then
+            echo "ERROR: please input image"
+            ret=$ERR_INVALID_ARGS
+            break
+        fi
+
+        if [ ! -d "$output_dir" ]; then
+            echo "INFO: $output_dir not exist, create"
+            mkdir -p "$output_dir"
+        fi
+
+        if [ ! -d "$tools_imgmk" ]; then
+            echo "ERROR: imgmk tools dir $tools_imgmk not exist"
+            ret=$ERR_INVALID_ARGS
+            break
+        fi
+
+        echo "INFO: secsign images"
+        secsign_images "$tools_imgmk" "$output_dir" "$input_boot" "$input_image" "$input_dsp" "$input_firmware" "$input_tone_data" "$input_en_fnt" "$input_ch_fnt"|| break
+        ret=$?
+
+        break
+    done
+
+    if [ $ret = 0 ]; then
+        echo "INFO: pack images to $output successfully"
+    else
+        echo "ERROR: pack images to $output failed"
+    fi
+
+    return $ret
+}
+
+main "$@"
+exit $?

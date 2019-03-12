@@ -1,0 +1,22 @@
+#
+# For a description of the syntax of this configuration file,
+# see the file kconfig-language.txt in the NuttX tools repository.
+#
+
+config EXAMPLES_UARTTEST
+	bool "\"uart test!\" example"
+	default n
+	---help---
+		Enable the \"uart test\" example
+
+if EXAMPLES_UARTTEST
+
+config EXAMPLES_UARTTEST_PROGNAME
+	string "Program name"
+	default "uarttest"
+	depends on BUILD_KERNEL
+	---help---
+		This is the name of the program that will be use when the NSH ELF
+		program is installed.
+
+endif

@@ -1,0 +1,56 @@
+#ifndef SL_BSP_H
+#define SL_BSP_H
+#include <stdbool.h>
+
+
+#define HW_MUTE_PIN			//46 //35
+#define HW_BT_MUTE_PIN		36
+#define HW_BT_PWR_PIN		//37
+
+#define HW_MIC_PAIR_PIN		35 //46
+
+#define HW_MIC_MUTE_PIN		//14 //22
+
+#define HW_HDMI_CEC_PIN		17
+#define HW_HDMI_DET_PIN		18
+
+
+#define LED_PIN_SEG1			26
+#define LED_PIN_SEG2			27
+#define LED_PIN_SEG3			32
+#define LED_PIN_SEG4			33
+#define LED_PIN_SEG5			34
+
+#define LED_PIN_GRID1			21
+#define LED_PIN_GRID2			23
+#define LED_PIN_GRID3			37
+#define LED_PIN_GRID4			38
+#define LED_PIN_GRID5			42
+#define LED_PIN_GRID6			46
+#define LED_PIN_GRID7			13
+#define LED_PIN_GRID8			14
+#define LED_PIN_GRID9			7
+#define LED_PIN_GRID10			8
+#define LED_PIN_GRID11			25
+#define LED_PIN_GRID12			45
+
+
+extern	bool is_power_on_unmute;
+void bsp_init(void);
+void Hw_Amp_Mute(void);
+void Hw_Amp_UnMute(void);
+void Bt_Power_On(void);
+void Bt_Power_Off(void);
+void Bt_Mute(void);
+void Bt_UnMute(void);
+void bsp_early_init(void);
+void Hw_PowerOn_UnMute(void);
+void bsp_led_io_init(void);
+
+void IO_TEST_TSET(void);
+
+void print_pad_reg(void);
+void pad_set_clear(void);
+
+
+#endif
